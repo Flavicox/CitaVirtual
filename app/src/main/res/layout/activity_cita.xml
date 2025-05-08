@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layoutCita"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Datos del doctor -->
+        <TextView
+            android:id="@+id/tvDatosDoctor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Dr. Nombre Apellido - Especialidad"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Campos -->
+        <EditText
+            android:id="@+id/etSintomas"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Síntomas" />
+
+        <EditText
+            android:id="@+id/etDiagnostico"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Diagnóstico"
+            android:layout_marginTop="8dp" />
+
+        <EditText
+            android:id="@+id/etAlergias"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:hint="Alergias"
+            android:layout_marginTop="8dp" />
+
+        <CheckBox
+            android:id="@+id/cbAceptarTerminos"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Acepto los términos y condiciones"
+            android:layout_marginTop="12dp" />
+
+        <!-- Confirmar cita -->
+        <Button
+            android:id="@+id/btnConfirmarCita"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Confirmar Cita"
+            android:layout_marginTop="16dp" />
+    </LinearLayout>
+</ScrollView>
