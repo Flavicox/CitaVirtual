@@ -20,6 +20,5 @@ object CitaRepository {
         horariosDisponibles.remove(drProg)
     }
 
-    fun obtenerHorariosDisponibles(): List<DrProg> = horariosDisponibles
 }
 

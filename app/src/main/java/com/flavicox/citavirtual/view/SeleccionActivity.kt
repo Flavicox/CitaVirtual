@@ -80,7 +80,7 @@ class SeleccionActivity : AppCompatActivity() {
     }
 
     private fun configurarSelectorFecha() {
-        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
 
         binding.btnSeleccionarFecha.setOnClickListener {
             mostrarDatePicker()

@@ -16,6 +16,7 @@ class SeleccionViewModel : ViewModel() {
 
     private val _drProgsFiltrados = MutableLiveData<List<DrProg>>()
     val drProgsFiltrados: LiveData<List<DrProg>> = _drProgsFiltrados
+
     private val _todasProgramaciones = MutableLiveData<List<DrProg>>()
     val todasProgramaciones: LiveData<List<DrProg>> = _todasProgramaciones
 
