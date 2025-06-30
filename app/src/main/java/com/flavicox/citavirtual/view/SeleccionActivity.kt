@@ -1,120 +1,145 @@
 package com.flavicox.citavirtual.view
 
-import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.flavicox.citavirtual.R
 import com.flavicox.citavirtual.controller.SeleccionViewModel
 import com.flavicox.citavirtual.databinding.ActivitySeleccionBinding
 import com.flavicox.citavirtual.view.adapter.DoctorAdapter
+import com.flavicox.citavirtual.view.components.FechaDialogoFragment
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 class SeleccionActivity : AppCompatActivity() {
-    private lateinit var adapter: DoctorAdapter
 
     private lateinit var binding: ActivitySeleccionBinding
     private lateinit var viewModel: SeleccionViewModel
+    private lateinit var adapter: DoctorAdapter
+
+    /* Últimos filtros seleccionados */
     private var fechaSeleccionada: Date? = null
+    private var sedeSeleccionada: String = "Sede A"
+    private var especialidadSeleccionada: String = "Pediatría"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // ViewBinding
+        /* ---------- ViewBinding ---------- */
         binding = ActivitySeleccionBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // ViewModel
+        /* ---------- ViewModel ---------- */
         viewModel = ViewModelProvider(this)[SeleccionViewModel::class.java]
 
-        // Configurar RecyclerView
-        adapter = DoctorAdapter(emptyList(), this) { drProgSeleccionado -> }
+        /* ---------- RecyclerView ---------- */
+        adapter = DoctorAdapter(emptyList(), this) { drProg ->
+            // Aquí lanzarías la actividad para confirmar la cita
+        }
+        binding.recyclerDoctores.apply {
+            adapter = this@SeleccionActivity.adapter
+            layoutManager = LinearLayoutManager(this@SeleccionActivity)
+            setHasFixedSize(true)
+        }
 
-
-        binding.recyclerDoctores.adapter = adapter
-        binding.recyclerDoctores.setHasFixedSize(true)
-
-        binding.recyclerDoctores.layoutManager = LinearLayoutManager(this)
-
-        // Cargar opciones iniciales
+        /* ---------- Spinners ---------- */
         inicializarSpinners()
-        configurarSelectorFecha()
 
-        // Acción cuando se cambia algo y se quiere filtrar
-        binding.btnSeleccionarFecha.setOnClickListener {
-            mostrarDatePicker()
-        }
+        /* ---------- Botón fecha ---------- */
+        binding.tvFechaSeleccionada.text = "Fecha no seleccionada"
+        binding.btnSeleccionarFecha.setOnClickListener { abrirDialogoFecha() }
 
-        // Observar cambios del ViewModel
-        viewModel.drProgsFiltrados.observe(this) { lista ->
-            adapter.actualizarLista(lista)
-        }
+        /* ---------- Colectar flujos del ViewModel ---------- */
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
 
-        viewModel.todasProgramaciones.observe(this) { listaCompleta ->
-            adapter.actualizarLista(listaCompleta)
+                // Todas las programaciones si no hay filtros
+                launch {
+                    viewModel.todasProgramaciones.collect { lista ->
+                        if (fechaSeleccionada == null) {
+                            adapter.actualizarLista(lista)
+                        }
+                    }
+                }
+
+                // Solo filtradas si ya se seleccionó una fecha
+                launch {
+                    viewModel.drProgsFiltrados.collect { listaFiltrada ->
+                        if (fechaSeleccionada != null) {
+                            adapter.actualizarLista(listaFiltrada)
+                        }
+                    }
+                }
+            }
         }
     }
 
+    /* -------------------- Spinners -------------------- */
     private fun inicializarSpinners() {
         val sedes = listOf("Sede A", "Sede B")
         val especialidades = listOf("Pediatría", "Medicina General", "Dermatología")
 
-        // Adaptadores
-        val sedeAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, sedes)
-        val especialidadAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, especialidades)
-
-        sedeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        especialidadAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-
-        binding.spinnerSede.adapter = sedeAdapter
-        binding.spinnerEspecialidad.adapter = especialidadAdapter
-    }
-
-    private fun configurarSelectorFecha() {
-        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-
-        binding.btnSeleccionarFecha.setOnClickListener {
-            mostrarDatePicker()
+        val sedeAdapter = android.widget.ArrayAdapter(this,
+            android.R.layout.simple_spinner_item, sedes).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val espAdapter = android.widget.ArrayAdapter(this,
+            android.R.layout.simple_spinner_item, especialidades).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
 
-        // También puedes predefinir una fecha si quieres
-        binding.tvFechaSeleccionada.text = "Fecha no seleccionada"
-    }
+        binding.spinnerSede.adapter = sedeAdapter
+        binding.spinnerEspecialidad.adapter = espAdapter
 
-    private fun mostrarDatePicker() {
-        val calendario = Calendar.getInstance()
-        val anio = calendario.get(Calendar.YEAR)
-        val mes = calendario.get(Calendar.MONTH)
-        val dia = calendario.get(Calendar.DAY_OF_MONTH)
-
-        val datePicker = DatePickerDialog(this, { _, year, month, day ->
-            val calendarSeleccionado = Calendar.getInstance().apply {
-                set(Calendar.YEAR, year)
-                set(Calendar.MONTH, month)
-                set(Calendar.DAY_OF_MONTH, day)
+        /* Detectar cambios para filtrar inmediatamente */
+        binding.spinnerSede.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>, view: android.view.View?, position: Int, id: Long) {
+                sedeSeleccionada = sedes[position]
+                filtrarSiHayFecha()
             }
 
-            fechaSeleccionada = calendarSeleccionado.time
-            val formato = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-            binding.tvFechaSeleccionada.text = formato.format(fechaSeleccionada!!)
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>) {}
+        }
+        binding.spinnerEspecialidad.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>, view: android.view.View?, position: Int, id: Long) {
+                especialidadSeleccionada = especialidades[position]
+                filtrarSiHayFecha()
+            }
 
-            // Filtro al seleccionar fecha
-            val sede = binding.spinnerSede.selectedItem.toString()
-            val especialidad = binding.spinnerEspecialidad.selectedItem.toString()
-            viewModel.filtrarProgramaciones(sede, especialidad, fechaSeleccionada!!)
-        }, anio, mes, dia)
-
-        datePicker.show()
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>) {}
+        }
     }
 
+    /* -------------------- DatePickerDialogFragment -------------------- */
+    private fun abrirDialogoFecha() {
+        FechaDialogoFragment { fecha ->
+            fechaSeleccionada = fecha
+            val formato = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            binding.tvFechaSeleccionada.text = formato.format(fecha)
 
+            viewModel.filtrarProgramaciones(
+                sedeSeleccionada,
+                especialidadSeleccionada,
+                fecha
+            )
+        }.show(supportFragmentManager, "fechaDialogo")
+    }
+
+    private fun filtrarSiHayFecha() {
+        fechaSeleccionada?.let { fecha ->
+            viewModel.filtrarProgramaciones(
+                sedeSeleccionada,
+                especialidadSeleccionada,
+                fecha
+            )
+        }
+    }
 }

@@ -1,109 +1,142 @@
 package com.flavicox.citavirtual.controller
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.flavicox.citavirtual.model.Doctor
 import com.flavicox.citavirtual.model.DrProg
-import com.flavicox.citavirtual.model.Programacion
-import java.text.SimpleDateFormat
+import com.flavicox.citavirtual.util.aEntidad
+import com.flavicox.citavirtual.util.aModelo
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 import java.util.Random
 
-class SeleccionViewModel : ViewModel() {
+class SeleccionViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _drProgsFiltrados = MutableLiveData<List<DrProg>>()
-    val drProgsFiltrados: LiveData<List<DrProg>> = _drProgsFiltrados
+    /* ---------- acceso a BD ---------- */
+    private val repositorio = CitaRepositorio(application)
 
-    private val _todasProgramaciones = MutableLiveData<List<DrProg>>()
-    val todasProgramaciones: LiveData<List<DrProg>> = _todasProgramaciones
+    /* ---------- flujos para la UI ---------- */
+    private val _drProgsFiltrados = MutableStateFlow<List<DrProg>>(emptyList())
+    val drProgsFiltrados: StateFlow<List<DrProg>> = _drProgsFiltrados
 
+    /**
+     * Todas las programaciones almacenadas en Room, convertidas a tu
+     * clase de dominio `DrProg` (con un “doctor mock” mientras no persistas doctores).
+     */
+    val todasProgramaciones: StateFlow<List<DrProg>> =
+        combine(
+            repositorio.horariosDisponibles,
+            repositorio.doctores
+        ) { listaProgramaciones, listaDoctores ->
+            val mapaDoctores = listaDoctores.associateBy { it.id }
+            listaProgramaciones.mapNotNull { entidad ->
+                val doctorEntidad = mapaDoctores[entidad.doctorId]
+                doctorEntidad?.let { entidad.aModelo(it.aModelo()) }
+            }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
 
-    private val datosMock: List<DrProg>
-
+    /* ---------- carga inicial de datos simulados ---------- */
     init {
-        val generadas = generarDoctoresParaProximosDias()
-        datosMock = generadas
-        _todasProgramaciones.value = generadas.sortedBy { it.fecha }
+        viewModelScope.launch {
+            val doctores = generarDoctores()
+            val programaciones = generarProgramacionesParaDoctores(doctores)
 
-        // Registrar los horarios en el repositorio
-        CitaRepository.agregarHorarios(generadas)
+            repositorio.agregarDoctores(doctores)
+            repositorio.agregarHorarios(programaciones.map { it.aEntidad() })
+        }
     }
 
-    private fun generarDoctoresParaProximosDias(): List<DrProg> {
+    /* ---------- generación de mocks ---------- */
+    private fun generarDoctores(): List<Doctor> {
         val especialidades = listOf("Pediatría", "Medicina General", "Dermatología")
-        val nombres = listOf("Luis", "Ana", "Mario", "Valeria", "Carlos", "Sofía", "Fernando", "Lucía", "Juan", "Camila")
-        val apellidos = listOf("Martínez", "Ramírez", "Fernández", "Gonzales", "Pérez", "Sánchez", "Castro", "López")
+        val nombres = listOf("Luis", "Ana", "Mario", "Valeria", "Carlos",
+            "Sofía", "Fernando", "Lucía", "Juan", "Camila")
+        val apellidos = listOf("Martínez", "Ramírez", "Fernández", "Gonzales",
+            "Pérez", "Sánchez", "Castro", "López")
 
         val random = Random()
+        return List(10) { i ->
+            Doctor(
+                id = i + 1,
+                nombre = nombres[i],
+                apPaterno = apellidos.random(),
+                apMaterno = apellidos.random(),
+                especialidad = especialidades.random(),
+                telefono = "9${(10000000..99999999).random()}"
+            )
+        }
+    }
+
+    private fun generarProgramacionesParaDoctores(doctores: List<Doctor>): List<DrProg> {
+        val random = Random()
         val lista = mutableListOf<DrProg>()
+        var autoIdProg = 1
 
-        repeat(30) { // Crear 30 doctores aleatorios
-            val nombre = nombres.random()
-            val apPaterno = apellidos.random()
-            val apMaterno = apellidos.random()
-            val especialidad = especialidades.random()
+        doctores.forEach { doctor ->
+            repeat(3) {
+                val fecha = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_MONTH, random.nextInt(5)) // 0–4 días adelante
+                    set(Calendar.HOUR_OF_DAY, 0); clear(Calendar.MINUTE)
+                    clear(Calendar.SECOND); clear(Calendar.MILLISECOND)
+                }.time
 
-            val doctor = Doctor(nombre, apPaterno, apMaterno, especialidad)
+                val horaAleatoria = random.nextInt(9) + 8 // 8–16 h
+                val horaTexto = String.format(
+                    "%02d:00 %s",
+                    horaAleatoria % 12,
+                    if (horaAleatoria < 12) "AM" else "PM"
+                )
 
-            // Día aleatorio entre hoy y 5 días después
-            val fecha = Calendar.getInstance().apply {
-                add(Calendar.DAY_OF_MONTH, random.nextInt(5)) // 0 a 4 días después
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.time
-
-            // Hora aleatoria entre 8:00 AM y 4:00 PM
-            val horaAleatoria = random.nextInt(9) + 8 // entre 8 y 16
-            val horaTexto = String.format("%02d:00 %s", horaAleatoria % 12, if (horaAleatoria < 12) "AM" else "PM")
-
-            lista.add(DrProg(doctor, fecha, horaTexto))
+                lista.add(
+                    DrProg(
+                        id = autoIdProg++,
+                        doctor = doctor,
+                        fecha = fecha,
+                        hora = horaTexto
+                    )
+                )
+            }
         }
 
         return lista
     }
 
+    /* ---------- filtros ---------- */
     fun filtrarProgramaciones(sede: String, especialidad: String, fecha: Date) {
-        _drProgsFiltrados.value = datosMock.filter { drProg ->
-            val coincideSede = obtenerSedeDeDoctor(drProg.doctor) == sede
-            val coincideEspecialidad = drProg.doctor.especialidad.equals(especialidad, ignoreCase = true)
-            val mismaFecha = esMismaFecha(drProg.fecha, fecha)
-
+        val base = todasProgramaciones.value
+        _drProgsFiltrados.value = base.filter { prog ->
+            val coincideSede        = obtenerSedeDeDoctor(prog.doctor) == sede
+            val coincideEspecialidad = prog.doctor.especialidad.equals(especialidad, true)
+            val mismaFecha          = esMismaFecha(prog.fecha, fecha)
             coincideSede && coincideEspecialidad && mismaFecha
         }
     }
 
-    private fun obtenerSedeDeDoctor(doctor: Doctor): String {
-        return when (doctor.nombre) {
-            "Luis" -> "Sede A"
-            "Ana" -> "Sede B"
-            "Mario" -> "Sede A"
-            else -> "Sede A"
-        }
+    /* ---------- utilidades ---------- */
+    private fun obtenerSedeDeDoctor(doctor: Doctor): String = when (doctor.nombre) {
+        "Luis"  -> "Sede A"
+        "Ana"   -> "Sede B"
+        "Mario" -> "Sede A"
+        else    -> "Sede A"
     }
 
-    private fun esMismaFecha(fecha1: Date, fecha2: Date): Boolean {
-        val cal1 = Calendar.getInstance().apply { time = fecha1 }
-        val cal2 = Calendar.getInstance().apply { time = fecha2 }
-
-        return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
-                cal1.get(Calendar.MONTH) == cal2.get(Calendar.MONTH) &&
-                cal1.get(Calendar.DAY_OF_MONTH) == cal2.get(Calendar.DAY_OF_MONTH)
+    private fun esMismaFecha(f1: Date, f2: Date): Boolean {
+        val c1 = Calendar.getInstance().apply { time = f1 }
+        val c2 = Calendar.getInstance().apply { time = f2 }
+        return c1[Calendar.YEAR]  == c2[Calendar.YEAR]  &&
+                c1[Calendar.MONTH] == c2[Calendar.MONTH] &&
+                c1[Calendar.DAY_OF_MONTH] == c2[Calendar.DAY_OF_MONTH]
     }
 
-    fun eliminarProgramacion(drProg: DrProg) {
-        val nuevaLista = _todasProgramaciones.value?.toMutableList()
-        nuevaLista?.remove(drProg)
-        _todasProgramaciones.value = nuevaLista?.sortedBy { it.fecha }
-
-        // Si estaba filtrado también, actualizar filtro
-        val filtrados = _drProgsFiltrados.value?.toMutableList()
-        filtrados?.remove(drProg)
-        _drProgsFiltrados.value = filtrados
+    /* ---------- eliminar programación ---------- */
+    fun eliminarProgramacion(drProg: DrProg) = viewModelScope.launch {
+        repositorio.eliminarHorarioReservado(drProg.aEntidad())
     }
-
 }

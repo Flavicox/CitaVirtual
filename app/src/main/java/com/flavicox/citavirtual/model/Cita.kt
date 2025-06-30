@@ -3,6 +3,7 @@ package com.flavicox.citavirtual.model
 import java.util.Date
 
 data class Cita(
+    val id: Int,
     val fecha: Date,
     val sintomas: String,
     val diagnostico: String,
